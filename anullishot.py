@@ -28,25 +28,18 @@ warnings.filterwarnings('ignore', 'NOT fine tuning model. TURN OFF')
 
 version = '3.0.1'
 config = HDRconfig('hdr3')
-#mlfile = op.join( config.hdr_dir['hdr3'], 'catalogs','ml','detect_ml_3.0.3.h5')
-#fileh = tables.open_file(mlfile, 'r') 
 catfile = op.join(config.hdr_dir['hdr3'], 'catalogs', 'source_catalog_' + version + '.fits') #source_catalog_ vs detect_hdr
 detects_table = Table.read(catfile)
 
 sel = (detects_table['shotid'] > 20180100000)
 sel = sel & np.array(detects_table['plya_classification'] > 0.8)
 sel = sel & np.array(detects_table['flag_best'] == 1)
-sel = sel & np.array(detects_table['z_hetdex'] > 1.9) & np.array(detects_table['z_hetdex'] < 3.4) #z1
-#sel = sel & np.array(detects_table['z_hetdex'] > 2.173) & np.array(detects_table['z_hetdex'] < 2.366) #z2
-#sel = sel & np.array(detects_table['z_hetdex'] > 2.366) & np.array(detects_table['z_hetdex'] < 2.56) #z3
-#sel = sel & np.array(detects_table['z_hetdex'] > 2.56) & np.array(detects_table['z_hetdex'] < 2.862) #z4
-#sel = sel & np.array(detects_table['z_hetdex'] > 2.862) & np.array(detects_table['z_hetdex'] < 3.4) #z5
+sel = sel & np.array(detects_table['z_hetdex'] > 1.9) & np.array(detects_table['z_hetdex'] < 3.4)
 sel = sel & np.array(detects_table['source_type'] == 'lae')
 sel = sel & np.array(detects_table['selected_det']==True)
 sel = sel & np.array(detects_table['best_pz'] > 0.2)
 sel = sel & np.array(detects_table['linewidth'] < 5.5)
 sel = sel & np.array(detects_table['sn'] > 5) & np.array(detects_table['sn'] < 6)
-#sel = sel & np.array(detects_table['sn'] > 5.5)
 sel = sel & np.array(detects_table['apcor'] > 0.6)
 sel = sel & np.array(detects_table['fwhm'] < 1.5 )
 detect_list = detects_table['detectid'][sel]
@@ -59,9 +52,7 @@ def kpc_to_arcsec(distance_kpc, z):
     D_A = cosmo.angular_diameter_distance(z).value 
     angular_size_radian = float(distance_kpc) / (D_A * 1000)  #D_A to kpc
     return angular_size_radian * (180 * 3600) / np.pi  #radian to arcsec
-#This gives intrinsic luminosity per aa and not instrinsic flux density
-
-#This gives intrinsic luminosity per aa and not instrinsic flux density
+    
 def process_id(iden, F=None):
     waves = []
     flux_densities = []
@@ -112,7 +103,6 @@ def process_id(iden, F=None):
                    np.abs(zone3_means[i]-zone3_avg) <= 3*zone3_std]
     valid_spec_counter = len(valid_specs)
     if valid_spec_counter == 0:
-        #print(f"Warning: No valid specs for iden {iden}.")
         return None, None, None, 0, 0
     else:
         valid_specs = np.array(valid_specs)
@@ -152,7 +142,6 @@ def process_shotid(shotid):
         flux_err.append(r3)
     F.close()
     if len(waves) == 0 or len(flux_densities) == 0 or len(flux_err) == 0:
-        #print(f"Warning: Empty results for shotid {shotid}.")
         return spec_counter, valid_spec_counter
     with open('zstore/fiber_spectra_newway_{}_{}_{}.pickle'.format(shotid, radius_in, radius_out), 'wb') as f:
         pickle.dump((waves, flux_densities, flux_err), f)
@@ -166,21 +155,17 @@ def aggregate_counts(result):
     global total_valid_specs
     total_specs += spec_counter
     total_valid_specs += valid_spec_counter
-# More functions...
 
 def main(radius_in, radius_out, shot_id=None):
     radii = [(int(radius_in), int(radius_out))]
-
     if shot_id:
         shots = [int(shot_id)]
     else:
         shots = np.unique(detects_table['shotid'][sel])
-
     for radius_in, radius_out in radii:
         total_specs = 0
         total_valid_specs = 0
         num = len(shots)
-        
         for shot in shots[:num]:
             spec_counter, valid_spec_counter = process_shotid(shot)
             total_specs += spec_counter
@@ -189,12 +174,8 @@ def main(radius_in, radius_out, shot_id=None):
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        #print("Usage: python3 anulli.py <radius_in> <radius_out> [shot_id]")
         sys.exit(1)
-
     radius_in = sys.argv[1]
     radius_out = sys.argv[2]
     shot_id = sys.argv[3] if len(sys.argv) > 3 else None
     main(radius_in, radius_out, shot_id)
-
-
