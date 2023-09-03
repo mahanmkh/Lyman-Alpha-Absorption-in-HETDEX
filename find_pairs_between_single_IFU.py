@@ -81,8 +81,6 @@ def extract_fibers_for_pair(pair, F, Nside, side_length, actual_row_idx):
     #print(len(fibers_tab))
     ra_LAEs = [pair['ra_1'], pair['ra_2']]
     dec_LAEs = [pair['dec_1'], pair['dec_2']]
-    #mask_to_keep = [not is_too_close_to_any_LAE(fiber['ra'], fiber['dec'], ra_LAEs, dec_LAEs, threshold_radius=3/3600) and 
-    #                is_inside_rectangle(fiber['ra'], fiber['dec'], rect_vertices) and is_too_close_to_any_LAE(fiber['ra'], fiber['dec'], ra_LAEs, dec_LAEs, threshold_radius=36/3600) for fiber in fibers_tab]
     mask_to_keep = [not is_too_close_to_any_LAE(fiber['ra'], fiber['dec'], ra_LAEs, dec_LAEs, threshold_radius=3/3600) and 
                     is_inside_rectangle(fiber['ra'], fiber['dec'], rect_vertices) for fiber in fibers_tab]
     fibers_tab_filtered = fibers_tab[mask_to_keep]
@@ -172,9 +170,6 @@ def main(row):
         actual_row_idx = i + (row or 0)
         fiber_table = extract_fibers_for_pair(pair_row, F, Nside, side_length, actual_row_idx)
         z = (pair_row['z_hetdex_1'] + pair_row['z_hetdex_2']) / 2
-        #print(pair_row['z_hetdex_1'])
-        #print(pair_row['z_hetdex_2'])
-        #print(z)
         median_spec, err = filter_fibers(fiber_table, z)
         if median_spec is not None and err is not None:
             conv = 1e-17
