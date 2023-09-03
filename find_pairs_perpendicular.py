@@ -182,9 +182,6 @@ def main(row):
         actual_row_idx = i + (row or 0)
         fiber_table = extract_fibers_for_pair(pair_row, F, Nside, side_length, actual_row_idx)
         z = (pair_row['z_hetdex_1'] + pair_row['z_hetdex_2']) / 2
-        #print(pair_row['z_hetdex_1'])
-        #print(pair_row['z_hetdex_2'])
-        #print(z)
         median_spec, err = filter_fibers(fiber_table, z)
         if median_spec is not None and err is not None:
             conv = 1e-17
