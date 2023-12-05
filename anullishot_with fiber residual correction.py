@@ -1,6 +1,5 @@
 #This is the same as anullishot. Instead of interpolate we do the empty fiber residuals.
 #This version is also fixed for applying each res to each fiber first and then taking the median.
-#well there is almost no difference between the two versions it seems
 import sys
 import os
 import glob
