@@ -112,7 +112,6 @@ def process_id(iden, F=None):
     valid_specs = np.array([spec for spec, i in valid_specs_and_indices])
     valid_spec_indices = [i for spec, i in valid_specs_and_indices]
     if valid_spec_counter == 0:
-        #print(f"Warning: No valid specs for iden {iden}.")
         return None, None, None, 0, 0
     else:
         valid_specs = np.array(valid_specs)
