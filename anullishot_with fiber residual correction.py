@@ -1,4 +1,4 @@
-#This is making an attempt to make the code less memory intensive
+#This script is the same as anullishot.py but empty fiber correction is added and it's less memory intensive
 import sys
 import os
 import glob
@@ -55,21 +55,26 @@ def process_id(iden, F=None):
     radius_out_arcsec = kpc_to_arcsec(radius_out, z)
     
     
-    fibtab_in = F.query_region(coords=coord, radius=radius_in_arcsec*u.arcsec, shotid=shotid)['fiber_id','flag']
     fibtab_out = F.query_region(coords=coord, radius=radius_out_arcsec*u.arcsec, shotid=shotid)['fiber_id','flag']
-    fibtab =np.setdiff1d(fibtab_out, fibtab_in)
-    fibtab_len=len(fibtab)
-    del fibtab_in
+    if radius_in_arcsec == 0:
+        fibtab = fibtab_out
+    else:
+        fibtab_in = F.query_region(coords=coord, radius=radius_in_arcsec*u.arcsec, shotid=shotid)['fiber_id','flag']
+        fibtab = np.setdiff1d(fibtab_out, fibtab_in)
+        del fibtab_in
     del fibtab_out
     
-    
+    fibtab_len= len(fibtab)
     if fibtab_len == 0:
         return None, None, None, 0, 0
     else:
-        fibers_in = get_fibers_table(shot=shotid, coords=coord, radius=radius_in_arcsec*u.arcsec, survey='hdr4', verbose=False,add_rescor=True)['fiber_id', 'calfib_ffsky_rescor', 'calfibe']
-        fibers_out = get_fibers_table(shot=shotid, coords=coord, radius=radius_out_arcsec*u.arcsec, survey='hdr4', verbose=False,add_rescor=True)['fiber_id', 'calfib_ffsky_rescor', 'calfibe']
-        fibers = np.setdiff1d(fibers_out, fibers_in)
-        del fibers_in
+        fibers_out = get_fibers_table(shot=shotid, coords=coord, radius=radius_out_arcsec*u.arcsec, survey='hdr4', verbose=False,add_rescor=True)['fiber_id', 'calfib_ffsky_rescor','calfibe']
+        if 0 <= radius_in_arcsec <= 5:
+            fibers = fibers_out
+        else:
+            fibers_in = get_fibers_table(shot=shotid, coords=coord, radius=radius_in_arcsec*u.arcsec, survey='hdr4', verbose=False,add_rescor=True)['fiber_id', 'calfib_ffsky_rescor', 'calfibe']
+            fibers = np.setdiff1d(fibers_out, fibers_in)
+            del fibers_in
         del fibers_out
         
         
@@ -91,7 +96,7 @@ def process_id(iden, F=None):
     mask_zone4 = (4860 < wl_vac) & (wl_vac < 5090)
     mask_zone5 = (5090 < wl_vac) & (wl_vac < 5500)
     medians = np.array([np.nanmedian(specs[:, mask], axis=1) for mask in [mask_zone1, mask_zone2, mask_zone3, mask_zone4, mask_zone5]])
-    valid_mask = np.all((-0.05 < medians) & (medians < 0.05), axis=0)
+    valid_mask = np.all((-0.5 < medians) & (medians < 0.5), axis=0) ###This should be +-0.05 for annuli###
     valid_specs = specs[valid_mask]
     valid_spec_counter = len(valid_specs)
     if valid_spec_counter == 0:
