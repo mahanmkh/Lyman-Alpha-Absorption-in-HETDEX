@@ -1,7 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[1]:
 import numpy as np
 import matplotlib.pyplot as plt
 import time
@@ -17,8 +13,15 @@ from hetdex_tools.phot_tools import get_line_image, get_flux_for_source
 from hetdex_tools.source_catalog import plot_source_group
 from hetdex_api.config import HDRconfig
 from elixer import spectrum_utilities as SU
+from elixer import global_config as G
 
-# In[2]:
+G.GLOBAL_LOGGING = True
+G.HDR_Version='4'
+
+wl = np.linspace(3470,5540,1036)
+wl_vac=SU.air_to_vac(wl)
+conv=1e-17
+
 def is_too_close_to_any_LAE(ra_fiber, dec_fiber, ra_LAEs, dec_LAEs, threshold_radius):
     for ra_LAE, dec_LAE in zip(ra_LAEs, dec_LAEs):
         dist = SkyCoord(ra=ra_fiber*u.degree, dec=dec_fiber*u.degree).separation(SkyCoord(ra=ra_LAE*u.degree, dec=dec_LAE*u.degree)).degree
@@ -83,6 +86,8 @@ def extract_fibers_for_pair(pair, F, Nside, side_length, actual_row_idx):
     dec_LAEs = [pair['dec_1'], pair['dec_2']]
     mask_to_keep = [not is_too_close_to_any_LAE(fiber['ra'], fiber['dec'], ra_LAEs, dec_LAEs, threshold_radius=3/3600) and 
                     is_inside_rectangle(fiber['ra'], fiber['dec'], rect_vertices) and is_too_close_to_any_LAE(fiber['ra'], fiber['dec'], ra_LAEs, dec_LAEs, threshold_radius=18/3600) for fiber in fibers_tab]
+    #mask_to_keep = [not is_too_close_to_any_LAE(fiber['ra'], fiber['dec'], ra_LAEs, dec_LAEs, threshold_radius=3/3600) and 
+    #                is_inside_rectangle(fiber['ra'], fiber['dec'], rect_vertices) for fiber in fibers_tab]
     fibers_tab_filtered = fibers_tab[mask_to_keep]
     print(f"multi IFU fiber number for row {actual_row_idx} = {len(fibers_tab_filtered)}")
     return fibers_tab_filtered
@@ -111,72 +116,56 @@ def gather_fibers(rect_region, F):
     return join(fibers_tab, fiber_spec)
 
 
-# In[4]:
-def filter_fibers(fiber_table, z):
-    wl = np.linspace(3470, 5540, 1036)
-    specs = fiber_table['calfib_ffsky']
+
+def filter_fibers(fiber_table,z,seeing,throughput,shot1,shot2):
+    specs = fiber_table['calfib_ffsky']#calfib_ffsky_rescor for hdr4
     specs = np.where(specs == 0, np.nan, specs)
-    zone1_means = []
-    zone2_means = []
-    zone3_means = []
-    valid_specs = []
-    for fib in specs:
-        zone1, zone2, zone3 = [], [], []
-        for w, f in zip(wl, fib):
-            if 3500 < w < 4000:
-                zone1.append(f)
-            elif 4000 < w < 5000:
-                zone2.append(f)
-            elif 5000 < w < 5500:
-                zone3.append(f)  
-        mean_zone1, std_zone1 = np.nanmean(zone1), np.nanstd(zone1)
-        mean_zone2, std_zone2 = np.nanmean(zone2), np.nanstd(zone2)
-        mean_zone3, std_zone3 = np.nanmean(zone3), np.nanstd(zone3)
-        if -0.02 < mean_zone1 < 2.5 and -0.02 < mean_zone2 < 0.02 and -0.02 < mean_zone3 < 0.02:
-            zone1_means.append(mean_zone1)
-            zone2_means.append(mean_zone2)
-            zone3_means.append(mean_zone3)
-            valid_specs.append(fib)
-    zone1_avg, zone1_std = np.mean(zone1_means), np.std(zone1_means)
-    zone2_avg, zone2_std = np.mean(zone2_means), np.std(zone2_means)
-    zone3_avg, zone3_std = np.mean(zone3_means), np.std(zone3_means)
-    valid_specs = [spec for i, spec in enumerate(valid_specs) if 
-                    np.abs(zone1_means[i]-zone1_avg) <= 3*zone1_std and 
-                    np.abs(zone2_means[i]-zone2_avg) <= 3*zone2_std and 
-                    np.abs(zone3_means[i]-zone3_avg) <= 3*zone3_std]
+    mask_zone1 = (3500 < wl_vac) & (wl_vac < 3860)
+    mask_zone2 = (3860 < wl_vac) & (wl_vac < 4270)
+    mask_zone3 = (4270 < wl_vac) & (wl_vac < 4860)
+    mask_zone4 = (4860 < wl_vac) & (wl_vac < 5090)
+    mask_zone5 = (5090 < wl_vac) & (wl_vac < 5500)
+    medians = np.array([np.nanmedian(specs[:, mask], axis=1) for mask in [mask_zone1, mask_zone2, mask_zone3, mask_zone4, mask_zone5]])
+    valid_mask = np.all((-0.05 < medians) & (medians < 0.05), axis=0)
+    valid_specs = specs[valid_mask]
     valid_spec_counter = len(valid_specs)
     if valid_spec_counter == 0:
-        #print(f"Warning: No valid specs for pair with z = {z}")
-        return None, None
-    valid_specs = np.array(valid_specs)
-    median_spec = np.nanmedian(valid_specs, axis=0)
-    errs = fiber_table['calfibe']
-    errs = np.where(errs == 0, np.nan, errs)
-    err = np.nanmedian(errs, axis=0)
-    return median_spec, err
+        return None, None, None, None, 0, 0
+    else:
+        valid_errs = fiber_table['calfibe'][valid_mask]
+        valid_errs = np.where(valid_errs == 0, np.nan, valid_errs)
+        err = np.nanmedian(valid_errs, axis=0)
+        valid_specs[np.isnan(valid_errs)] = np.nan
+        median_spec = np.nanmedian(valid_specs, axis=0)
+        #res1, res_err1, res_con1= SU.get_empty_fiber_residual(hdr='4', rtype='trim', shotid=shot1, seeing=seeing,response=throughput,ffsky=True,persist=True)
+        #res2, res_err2, res_cont2= SU.get_empty_fiber_residual(hdr='4', rtype='trim', shotid=shot2, seeing=seeing,response=throughput,ffsky=True,persist=True)#add_rescor=True for hdr4 #add the average of the two shot ids maybe?
+        #res = (res1 + res2) / 2
+        final_spec = median_spec #- res
+    return final_spec, err
 
 
-# In[5]:
 def main(row):
-    input_file = 'filtered_pairs_table4.fits'
+    input_file = 'distant_pairs_HDR4_80to120arcsec.fits'
     filtered_pairs = Table.read(input_file, format='fits')
     if row is not None:
         filtered_pairs = [filtered_pairs[row]]
-    F = FiberIndex('hdr3')
+    F = FiberIndex("hdr4")
     Nside = 2 ** 15
-    side_length = 80/3600.0
-    wl = np.linspace(3470, 5540, 1036)
+    side_length = 70/3600.0
     for i, pair_row in enumerate(filtered_pairs):
         actual_row_idx = i + (row or 0)
         fiber_table = extract_fibers_for_pair(pair_row, F, Nside, side_length, actual_row_idx)
         z = (pair_row['z_hetdex_1'] + pair_row['z_hetdex_2']) / 2
-        median_spec, err = filter_fibers(fiber_table, z)
-        if median_spec is not None and err is not None:
-            conv = 1e-17
-            flux_density = median_spec * conv
+        seeing = (pair_row['fwhm_1'] + pair_row['fwhm_2']) / 2
+        throughput = (pair_row['throughput_1'] + pair_row['throughput_2']) / 2
+        shot1= pair_row['shotid_1']
+        shot2= pair_row['shotid_2']  
+        final_spec, err = filter_fibers(fiber_table,z,seeing,throughput,shot1,shot2)
+        if final_spec is not None and err is not None:
+            flux_density = final_spec * conv
             fluxe = err * conv
             lum, rest_wl, lum_err = SU.shift_flam_to_rest_luminosity_per_aa(z, flux_density, wl, eflux=fluxe, apply_air_to_vac=True)
-            with open(f'lumpairs_between_multi_IFU/lum_pairs_{actual_row_idx}.pkl', 'wb') as f:
+            with open(f'zstore/lum_pairs_{actual_row_idx}.pkl', 'wb') as f:
                 pickle.dump({
                     'lum': lum,
                     'rest_wl': rest_wl,
@@ -185,7 +174,6 @@ def main(row):
     F.close() 
 
                 
-# In[6]:
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description="Process HETDEX data")
